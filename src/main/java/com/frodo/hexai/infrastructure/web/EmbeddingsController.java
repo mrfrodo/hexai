@@ -2,10 +2,12 @@ package com.frodo.hexai.infrastructure.web;
 
 import com.frodo.hexai.domain.model.KnowledgeItem;
 import com.frodo.hexai.domain.service.KnowledgeItemEmbeddingService;
+import com.frodo.hexai.domain.service.MemoryEstimator;
+import com.frodo.hexai.domain.validator.KnowledgeItemValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,9 +17,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Driving inbound adapter
@@ -28,37 +28,52 @@ public class EmbeddingsController {
 
     private static final Logger log = LoggerFactory.getLogger(EmbeddingsController.class);
     private final KnowledgeItemEmbeddingService embeddingService;
+    private final KnowledgeItemValidator validator = new KnowledgeItemValidator();
+    // In-memory storage for demonstration purposes
+    private final List<KnowledgeItem> embeddedItems = new ArrayList<>();
 
     public EmbeddingsController(KnowledgeItemEmbeddingService embeddingService) {
         this.embeddingService = embeddingService;
     }
+
     @PostMapping("/upload")
     public ResponseEntity<String> upload(@RequestParam("file") MultipartFile file) {
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
 
-            List<String> lines = new ArrayList<>();
+            // read raw lines from file
+            List<String> rawLines = new ArrayList<>();
             String line;
             while ((line = reader.readLine()) != null) {
-                line = line.trim();
-                if (!line.isBlank()) lines.add(line);
+                rawLines.add(line);
             }
 
-            if (lines.isEmpty()) {
+            // Use domain validator BEFORE calling business logic
+            List<String> validLines = validator.filterValidLines(rawLines);
+
+            if (validLines.isEmpty()) {
                 return ResponseEntity.badRequest()
                         .body("Uploaded file contained no valid lines.");
             }
 
-            // Call domain service → outbound adapter handles embedding
+            // Call domain service (business logic)
             long start = System.currentTimeMillis();
-            List<KnowledgeItem> items = embeddingService.embedItems(lines);
-            log.info("Embedding {} items completed in {} ms", items.size(),
-                    System.currentTimeMillis() - start);
+            List<KnowledgeItem> items = embeddingService.embedKnowledgeItems(validLines);
+            long duration = System.currentTimeMillis() - start;
+            log.info("________________create embeddings took {} ms. _______", duration);
 
+            // Store in memory
+            embeddedItems.addAll(items);
+
+            // Log items
             logItems(items);
 
-            return ResponseEntity.ok(
-                    "Uploaded and embedded " + items.size() + " items successfully!");
+            // Log memory usage
+            logMemoryUsage();
+
+            // Log or return response
+            log.info("Embedded {} knowledge items successfully.", items.size());
+            return ResponseEntity.ok("Uploaded and embedded " + items.size() + " items successfully!");
 
         } catch (Exception e) {
             log.error("Failed to process uploaded file", e);
@@ -67,15 +82,45 @@ public class EmbeddingsController {
         }
     }
 
+    /**
+     * New endpoint: estimates memory usage of all embedded KnowledgeItems
+     */
+    @GetMapping("/memory-usage")
+    public ResponseEntity<String> memoryUsage() {
+        long bytes = MemoryEstimator.estimateMemoryUsage(embeddedItems);
+        double mb = MemoryEstimator.bytesToMB(bytes);
+        log.info("Current memory footprint of KnowledgeItems: {} MB", mb);
+        return ResponseEntity.ok(String.format("Estimated memory usage: %.2f MB", mb));
+    }
+
     private void logItems(List<KnowledgeItem> items) {
         if (log.isInfoEnabled()) {
             for (KnowledgeItem item : items) {
+                /**
                 log.info("id={}, embeddingDimensions={}, content={}",
                         item.getId(),
                         item.getEmbedding().length,
-                        item.getContent());
+                        item.getContent()); */
             }
         }
+    }
+
+    /**
+     * Logs total memory usage.
+     */
+    private void logMemoryUsage() {
+        long bytes = MemoryEstimator.estimateMemoryUsage(embeddedItems);
+        double mb = MemoryEstimator.bytesToMB(bytes);
+        log.info("Total in-memory KnowledgeItems: {} items, estimated {} MB", embeddedItems.size(), trunc(mb, 3));
+    }
+
+    private double trunc(double value, int sigFigures) {
+        if (value == 0) return 0;
+        final double d = Math.floor(Math.log10(Math.abs(value)));
+        final double power = sigFigures - 1 - d;
+        final double magnitude = Math.pow(10, power);
+        // Truncate by casting to long
+        return Math.floor(value * magnitude) / magnitude;
     }
 
 }

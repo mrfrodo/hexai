@@ -20,7 +20,7 @@ public class AzureEmbeddingAdapter implements KnowledgeItemEmbeddingService {
     }
 
     @Override
-    public List<KnowledgeItem> embedItems(List<String> lines) {
+    public List<KnowledgeItem> embedKnowledgeItems(List<String> lines) {
         List<float[]> embeddings = embeddingModel.embed(lines);
         List<KnowledgeItem> items = new ArrayList<>();
         for (int i = 0; i < lines.size(); i++) {

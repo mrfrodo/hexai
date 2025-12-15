@@ -16,13 +16,20 @@ public class HexAIApp {
 	@Bean
 	ApplicationRunner demo(ChatClient chatClient) {
 		return args -> {
-
+			System.out.println("   (AI starts thinking...)");
+			long start = System.currentTimeMillis();
 			String output = chatClient.prompt()
-					.user("Can you give me today's quote?")
+					.user("HELLO HELLO IM FRODO FROM THE SHIRE")
 					.call()
 					.content();
 
-			System.out.println("**** quote of the day: " + output);
+
+			System.out.println("__________________________________________________________________________________________________________________________________________________________________________________________________________");
+			System.out.println("   " + output + " ");
+			System.out.println("__________________________________________________________________________________________________________________________________________________________________________________________________________");
+			long timestamp = System.currentTimeMillis();
+			long time = timestamp - start;
+			System.out.println("   (AI took " + time + " ms. to execute)\n\n");
 		};
 	}
 
