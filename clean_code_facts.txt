@@ -1,0 +1,10 @@
+1. Use meaningful and descriptive variable and function names.
+2. Keep functions small and focused on a single task.
+3. Avoid duplicate code; follow the DRY principle.
+4. Write unit tests to ensure your code works as expected.
+5. Prefer readability over clever or complex implementations.
+6. Limit function parameters; consider using objects for multiple inputs.
+7. Consistently format your code for readability.
+8. Use clear and simple control flow; avoid deep nesting.
+9. Document why code exists, not what it does.
+10. Refactor code regularly to improve structure and maintainability.
