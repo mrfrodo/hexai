@@ -1,5 +1,7 @@
 package com.frodo.hexai.infrastructure.web;
 
+import com.frodo.hexai.domain.model.KnowledgeItem;
+import com.frodo.hexai.domain.service.KnowledgeItemEmbeddingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -17,67 +19,61 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Driving inbound adapter
+ */
+
 @RestController
 public class EmbeddingsController {
 
-    private static final Logger log =
-            LoggerFactory.getLogger(EmbeddingsController.class);
-    private final List<Map<String, Object>> embeddedTips = new ArrayList<>();
-    private final EmbeddingModel embeddingModel;
+    private static final Logger log = LoggerFactory.getLogger(EmbeddingsController.class);
+    private final KnowledgeItemEmbeddingService embeddingService;
 
-    public EmbeddingsController(EmbeddingModel embeddingModel) {
-        this.embeddingModel = embeddingModel;
+    public EmbeddingsController(KnowledgeItemEmbeddingService embeddingService) {
+        this.embeddingService = embeddingService;
     }
-
     @PostMapping("/upload")
-    public ResponseEntity<String> uploadTips(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<String> upload(@RequestParam("file") MultipartFile file) {
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
 
             List<String> lines = new ArrayList<>();
             String line;
-
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
-                if (!line.isBlank()) {
-                    lines.add(line);
-                }
+                if (!line.isBlank()) lines.add(line);
             }
 
-            // 🚀 ONE Azure API call instead of N
+            if (lines.isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body("Uploaded file contained no valid lines.");
+            }
+
+            // Call domain service → outbound adapter handles embedding
             long start = System.currentTimeMillis();
-            List<float[]> embeddings = embeddingModel.embed(lines);
-            log.info("\n\n_____Embedding {} tips completed in {} ms\n\n", lines.size(), System.currentTimeMillis() - start);
+            List<KnowledgeItem> items = embeddingService.embedItems(lines);
+            log.info("Embedding {} items completed in {} ms", items.size(),
+                    System.currentTimeMillis() - start);
 
-            for (int i = 0; i < lines.size(); i++) {
-                Map<String, Object> entry = new HashMap<>();
-                entry.put("id", "tip-" + i);
-                entry.put("content", lines.get(i));
-                entry.put("embedding", embeddings.get(i));
-
-                embeddedTips.add(entry);
-            }
-
-            logEmbeddedTips(embeddedTips);
+            logItems(items);
 
             return ResponseEntity.ok(
-                    "\n\nUploaded and embedded " + lines.size() + " tips successfully!\n");
+                    "Uploaded and embedded " + items.size() + " items successfully!");
 
         } catch (Exception e) {
+            log.error("Failed to process uploaded file", e);
             return ResponseEntity.status(500)
                     .body("Failed to process file: " + e.getMessage());
         }
     }
 
-    private void logEmbeddedTips(List<Map<String, Object>> embeddedTips) {
+    private void logItems(List<KnowledgeItem> items) {
         if (log.isInfoEnabled()) {
-            log.info("\n\n");
-            for (Map<String, Object> tip : embeddedTips) {
-                float[] embedding = (float[]) tip.get("embedding");
+            for (KnowledgeItem item : items) {
                 log.info("id={}, embeddingDimensions={}, content={}",
-                        tip.get("id"),
-                        embedding.length,
-                        tip.get("content"));
+                        item.getId(),
+                        item.getEmbedding().length,
+                        item.getContent());
             }
         }
     }
